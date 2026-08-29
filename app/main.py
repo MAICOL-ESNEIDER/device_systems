@@ -8,6 +8,8 @@ instancia principal de FastAPI. Los routers de cada recurso (como
 
 from fastapi import FastAPI
 
+from app.routes.user_routes import router as user_router
+
 # --- Metadatos de la aplicación ---
 # title, description y version aparecen automáticamente en la
 # documentación interactiva de Swagger UI (http://localhost:8000/docs)
@@ -16,6 +18,10 @@ app = FastAPI(
     description="API REST para la gestión de usuarios del sistema device_systems.",
     version="1.0.0",
 )
+
+# Registrar el router de usuarios: todas sus rutas quedan disponibles
+# bajo el prefijo /users (definido dentro del propio router).
+app.include_router(user_router)
 
 
 @app.get("/", tags=["root"], summary="Endpoint raíz de bienvenida")
