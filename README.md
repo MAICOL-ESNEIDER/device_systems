@@ -165,8 +165,13 @@ Respuesta:
 **Prueba POST /users:**
 ![Prueba POST /users](images/swagger_4_post_users.png)
 
-**Evidencia de validación con error (422 o 409):**
-![Evidencia de validación](images/swagger_5_validacion_error.png)
+**Evidencia de validación con error:**
+
+**Caso 1 — Correo duplicado (409 Conflict):**
+![Evidencia de validación - correo duplicado](images/swagger_5_validacion_error.png)
+
+**Caso 2 — Rol inválido (422 Unprocessable Entity):**
+![Evidencia de validación - rol inválido](images/swagger_6_validacion_error.png)
 
 ---
 
