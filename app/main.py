@@ -6,7 +6,7 @@ instancia principal de FastAPI. Los routers de cada recurso (como
 'users') se registran aquí a medida que se van implementando.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from app.routes.user_routes import router as user_router
 
@@ -22,6 +22,24 @@ app = FastAPI(
 # Registrar el router de usuarios: todas sus rutas quedan disponibles
 # bajo el prefijo /users (definido dentro del propio router).
 app.include_router(user_router)
+
+
+@app.middleware("http")
+async def agregar_cabeceras_personalizadas(request: Request, call_next):
+    """
+    Middleware HTTP que se ejecuta en TODAS las peticiones a la API,
+    sin importar el endpoint. 'call_next' ejecuta la ruta
+    correspondiente y devuelve su respuesta; aquí simplemente se le
+    añaden dos cabeceras personalizadas antes de enviarla al cliente:
+
+    - X-App-Name: identifica qué aplicación respondió la petición.
+    - X-API-Version: permite al cliente saber qué versión de la API
+      está consumiendo, útil si en el futuro hay cambios importantes.
+    """
+    response = await call_next(request)
+    response.headers["X-App-Name"] = "device_systems"
+    response.headers["X-API-Version"] = "1.0"
+    return response
 
 
 @app.get("/", tags=["root"], summary="Endpoint raíz de bienvenida")
