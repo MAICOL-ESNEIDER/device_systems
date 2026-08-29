@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Path, Query, status
 
-from app.schemas.user_schema import UserResponse, UserRole
+from app.schemas.user_schema import UserCreate, UserResponse, UserRole
 
 # El prefijo hace que TODAS las rutas de este router empiecen con
 # /users. 'tags' agrupa estos endpoints bajo "users" en Swagger UI.
@@ -129,3 +129,52 @@ def obtener_usuario(
         )
 
     return usuario
+
+
+@router.post(
+    "/",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Registrar un nuevo usuario",
+)
+def crear_usuario(usuario: UserCreate):
+    """
+    POST /users
+
+    Registra un nuevo usuario en el sistema.
+
+    El parámetro 'usuario' se recibe automáticamente como el cuerpo
+    (body) de la petición en formato JSON. Antes de que esta función
+    se ejecute, FastAPI ya validó ese JSON contra el modelo
+    UserCreate (nombre con mínimo 3 caracteres, email con formato
+    válido, role dentro de los valores permitidos, is_active
+    booleano); si algo no cumple, el cliente recibe un 422 y esta
+    función ni siquiera llega a ejecutarse.
+
+    Además de esa validación automática, aquí se valida manualmente
+    una regla de negocio que Pydantic no puede saber por sí solo: que
+    no exista ya otro usuario registrado con el mismo correo.
+    """
+    global _siguiente_id
+
+    correo_duplicado = any(u["email"] == usuario.email for u in _usuarios_db)
+    if correo_duplicado:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Ya existe un usuario registrado con el correo '{usuario.email}'.",
+        )
+
+    # model_dump() convierte el modelo Pydantic validado en un dict
+    # normal de Python, listo para guardarse en la "base de datos" en
+    # memoria junto con los campos que el servidor asigna (id, notes).
+    nuevo_usuario = usuario.model_dump()
+    nuevo_usuario["id"] = _siguiente_id
+    nuevo_usuario["notes"] = "Usuario creado vía POST /users"
+    _siguiente_id += 1
+
+    _usuarios_db.append(nuevo_usuario)
+
+    # Se devuelve el usuario recién creado; el response_model
+    # UserResponse se encarga de ocultar el campo 'notes' en la
+    # respuesta final que recibe el cliente.
+    return nuevo_usuario
