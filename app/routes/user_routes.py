@@ -12,8 +12,9 @@ responsabilidad ahora vive en app/data y app/services.
 
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.dependencies.user_dependencies import get_user_or_404
 from app.schemas.user_schema import UserCreate, UserResponse, UserRole
 from app.services import user_service
 
@@ -44,11 +45,14 @@ def listar_usuarios(
     description="Busca un usuario por su ID (path parameter). Responde 404 si no existe.",
     response_description="El usuario encontrado.",
 )
-def obtener_usuario(user_id: int):
-    """GET /users/{user_id}"""
-    usuario = user_service.obtener_usuario_por_id(user_id)
-    if usuario is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+def obtener_usuario(usuario: dict = Depends(get_user_or_404)):
+    """
+    GET /users/{user_id}
+
+    La búsqueda y el manejo del 404 ya no viven aquí: los hace la
+    dependencia get_user_or_404, que además se reutilizará en PUT,
+    PATCH y DELETE en la siguiente rama.
+    """
     return usuario
 
 
