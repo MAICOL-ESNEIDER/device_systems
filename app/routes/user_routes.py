@@ -1,133 +1,58 @@
 """
 app/routes/user_routes.py
 --------------------------------------------------------------
-Endpoints REST para el recurso 'users'. Los datos se guardan en una
-lista en memoria (_usuarios_db) que simula una base de datos para
-efectos de este ejercicio académico: se reinicia cada vez que se
-reinicia el servidor, lo cual es suficiente para el alcance del reto.
+Endpoints REST del recurso 'users' (versión reestructurada EV08).
+
+Esta capa se encarga SOLO de: recibir la petición HTTP, delegar la
+lógica a app/services/user_service.py, y traducir el resultado a la
+respuesta HTTP correcta (status code + response_model). Ya no
+guarda los datos aquí mismo (a diferencia de la versión EV07): esa
+responsabilidad ahora vive en app/data y app/services.
 """
 
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.schemas.user_schema import UserCreate, UserResponse, UserRole
+from app.dependencies.user_dependencies import get_user_or_404, validar_patch_no_vacio, verificar_api_key
+from app.schemas.user_schema import UserCreate, UserReplace, UserResponse, UserRole, UserUpdate
+from app.services import user_service
 
 # El prefijo hace que TODAS las rutas de este router empiecen con
-# /users. 'tags' agrupa estos endpoints bajo "users" en Swagger UI.
-router = APIRouter(prefix="/users", tags=["users"])
-
-# --- "Base de datos" en memoria ---
-# Se guardan 4 usuarios de ejemplo (semilla) para poder probar los
-# endpoints GET inmediatamente al levantar el servidor, sin tener
-# que registrar usuarios manualmente primero.
-_usuarios_db: List[dict] = [
-    {
-        "id": 1,
-        "name": "Camila Restrepo",
-        "email": "camila@ejemplo.com",
-        "role": UserRole.admin,
-        "is_active": True,
-        "notes": "Usuario semilla",
-    },
-    {
-        "id": 2,
-        "name": "Andrés Gómez",
-        "email": "andres@ejemplo.com",
-        "role": UserRole.support,
-        "is_active": True,
-        "notes": "Usuario semilla",
-    },
-    {
-        "id": 3,
-        "name": "Laura Pérez",
-        "email": "laura@ejemplo.com",
-        "role": UserRole.user,
-        "is_active": False,
-        "notes": "Usuario semilla",
-    },
-    {
-        "id": 4,
-        "name": "Pedro Sánchez",
-        "email": "pedro@ejemplo.com",
-        "role": UserRole.user,
-        "is_active": True,
-        "notes": "Usuario semilla",
-    },
-]
-
-# Contador simple para asignar IDs únicos a los usuarios que se
-# registren más adelante (ver POST /users en la siguiente rama).
-_siguiente_id = 5
+# /users. 'tags' agrupa estos endpoints bajo "Users" en Swagger UI.
+router = APIRouter(prefix="/users", tags=["Users"])
 
 
 @router.get(
     "/",
     response_model=List[UserResponse],
-    summary="Listar usuarios (con filtros opcionales)",
+    summary="Listar usuarios",
+    description="Devuelve todos los usuarios registrados, con filtros opcionales por rol y/o estado activo.",
+    response_description="Lista de usuarios que cumplen los filtros indicados.",
 )
 def listar_usuarios(
-    role: Optional[UserRole] = Query(
-        default=None,
-        description="Filtra los usuarios por rol: admin, support o user.",
-    ),
-    is_active: Optional[bool] = Query(
-        default=None,
-        description="Filtra los usuarios por estado activo (true) o inactivo (false).",
-    ),
+    role: Optional[UserRole] = Query(default=None, description="Filtra por rol: admin, support o user."),
+    is_active: Optional[bool] = Query(default=None, description="Filtra por estado activo (true) o inactivo (false)."),
 ):
-    """
-    GET /users
-
-    Devuelve la lista completa de usuarios. Si se envían los query
-    parameters 'role' y/o 'is_active', la lista se filtra en
-    consecuencia. Ejemplos:
-    - GET /users              -> todos los usuarios
-    - GET /users?role=admin   -> solo administradores
-    - GET /users?is_active=true -> solo usuarios activos
-    - GET /users?role=user&is_active=false -> ambos filtros combinados
-    """
-    resultado = _usuarios_db
-
-    # Cada filtro es opcional e independiente: si no se envía ese
-    # query parameter, su valor por defecto es None y no se aplica.
-    if role is not None:
-        resultado = [usuario for usuario in resultado if usuario["role"] == role]
-
-    if is_active is not None:
-        resultado = [usuario for usuario in resultado if usuario["is_active"] == is_active]
-
-    return resultado
+    """GET /users — delega el listado y el filtrado a la capa de servicios."""
+    return user_service.listar_usuarios(role=role, is_active=is_active)
 
 
 @router.get(
     "/{user_id}",
     response_model=UserResponse,
     summary="Consultar un usuario por su ID",
+    description="Busca un usuario por su ID (path parameter). Responde 404 si no existe.",
+    response_description="El usuario encontrado.",
 )
-def obtener_usuario(
-    user_id: int = Path(
-        ...,
-        description="ID numérico del usuario a consultar.",
-        ge=1,  # FastAPI valida automáticamente que sea >= 1 (responde 422 si no)
-        examples=[1],
-    )
-):
+def obtener_usuario(usuario: dict = Depends(get_user_or_404)):
     """
     GET /users/{user_id}
 
-    Busca un usuario por su ID, recibido como path parameter. Si no
-    existe ningún usuario con ese ID, responde con un error 404 y un
-    mensaje claro en vez de dejar que el programa falle.
+    La búsqueda y el manejo del 404 ya no viven aquí: los hace la
+    dependencia get_user_or_404, que además se reutilizará en PUT,
+    PATCH y DELETE en la siguiente rama.
     """
-    usuario = next((u for u in _usuarios_db if u["id"] == user_id), None)
-
-    if usuario is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No se encontró ningún usuario con id {user_id}.",
-        )
-
     return usuario
 
 
@@ -136,45 +61,104 @@ def obtener_usuario(
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Registrar un nuevo usuario",
+    description="Crea un usuario nuevo, validando los datos con Pydantic y rechazando correos duplicados.",
+    response_description="El usuario recién creado, con su ID ya asignado.",
 )
 def crear_usuario(usuario: UserCreate):
-    """
-    POST /users
-
-    Registra un nuevo usuario en el sistema.
-
-    El parámetro 'usuario' se recibe automáticamente como el cuerpo
-    (body) de la petición en formato JSON. Antes de que esta función
-    se ejecute, FastAPI ya validó ese JSON contra el modelo
-    UserCreate (nombre con mínimo 3 caracteres, email con formato
-    válido, role dentro de los valores permitidos, is_active
-    booleano); si algo no cumple, el cliente recibe un 422 y esta
-    función ni siquiera llega a ejecutarse.
-
-    Además de esa validación automática, aquí se valida manualmente
-    una regla de negocio que Pydantic no puede saber por sí solo: que
-    no exista ya otro usuario registrado con el mismo correo.
-    """
-    global _siguiente_id
-
-    correo_duplicado = any(u["email"] == usuario.email for u in _usuarios_db)
-    if correo_duplicado:
+    """POST /users"""
+    if user_service.obtener_usuario_por_email(usuario.email) is not None:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Ya existe un usuario registrado con el correo '{usuario.email}'.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Ya existe un usuario registrado con el correo '{usuario.email}'",
         )
+    return user_service.crear_usuario(usuario)
 
-    # model_dump() convierte el modelo Pydantic validado en un dict
-    # normal de Python, listo para guardarse en la "base de datos" en
-    # memoria junto con los campos que el servidor asigna (id, notes).
-    nuevo_usuario = usuario.model_dump()
-    nuevo_usuario["id"] = _siguiente_id
-    nuevo_usuario["notes"] = "Usuario creado vía POST /users"
-    _siguiente_id += 1
 
-    _usuarios_db.append(nuevo_usuario)
+@router.put(
+    "/{user_id}",
+    response_model=UserResponse,
+    summary="Actualizar un usuario por completo",
+    description=(
+        "Reemplaza TODOS los campos de un usuario existente (name, email, "
+        "role, is_active). Responde 404 si el usuario no existe, y 400 si "
+        "el nuevo correo ya pertenece a otro usuario."
+    ),
+    response_description="El usuario ya actualizado con los nuevos datos.",
+)
+def reemplazar_usuario(
+    datos: UserReplace,
+    usuario_actual: dict = Depends(get_user_or_404),
+):
+    """
+    PUT /users/{user_id}
 
-    # Se devuelve el usuario recién creado; el response_model
-    # UserResponse se encarga de ocultar el campo 'notes' en la
-    # respuesta final que recibe el cliente.
-    return nuevo_usuario
+    A diferencia de PATCH, aquí el cliente debe enviar los 4 campos
+    (UserReplace los exige todos como obligatorios): la filosofía de
+    PUT es "reemplazar el recurso completo", no "tocar un pedacito".
+    """
+    correo_en_uso = user_service.obtener_usuario_por_email(datos.email, excluir_id=usuario_actual["id"])
+    if correo_en_uso is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Ya existe otro usuario registrado con el correo '{datos.email}'",
+        )
+    return user_service.reemplazar_usuario(usuario_actual["id"], datos)
+
+
+@router.patch(
+    "/{user_id}",
+    response_model=UserResponse,
+    summary="Actualizar un usuario parcialmente",
+    description=(
+        "Modifica SOLO los campos enviados en el body (ej: {\"role\": \"support\"}). "
+        "Responde 400 si no se envía ningún campo, y 404 si el usuario no existe."
+    ),
+    response_description="El usuario con los campos ya actualizados.",
+)
+def actualizar_usuario_parcial(
+    datos: UserUpdate = Depends(validar_patch_no_vacio),
+    usuario_actual: dict = Depends(get_user_or_404),
+):
+    """
+    PATCH /users/{user_id}
+
+    'datos' ya pasó por la dependencia validar_patch_no_vacio, así
+    que aquí es seguro asumir que al menos un campo viene con valor.
+    Solo falta revisar el caso particular de que el nuevo correo (si
+    se envió) no choque con el de otro usuario.
+    """
+    if datos.email is not None:
+        correo_en_uso = user_service.obtener_usuario_por_email(datos.email, excluir_id=usuario_actual["id"])
+        if correo_en_uso is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ya existe otro usuario registrado con el correo '{datos.email}'",
+            )
+    return user_service.actualizar_usuario_parcial(usuario_actual["id"], datos)
+
+
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Eliminar un usuario",
+    description=(
+        "Elimina un usuario existente. Requiere la cabecera 'X-API-Key' "
+        "para autorizar la operación (simulación de autenticación básica). "
+        "Responde 404 si el usuario no existe, y 401 si falta o es "
+        "incorrecta la cabecera de autorización."
+    ),
+    response_description="Sin contenido: el usuario fue eliminado correctamente.",
+)
+def eliminar_usuario(
+    usuario_actual: dict = Depends(get_user_or_404),
+    _autorizado: None = Depends(verificar_api_key),
+) -> None:
+    """
+    DELETE /users/{user_id}
+
+    Devuelve 204 No Content (sin cuerpo de respuesta) tras eliminar
+    exitosamente. Combina DOS dependencias: primero confirma que el
+    usuario existe, luego valida la cabecera de autorización.
+    """
+    user_service.eliminar_usuario(usuario_actual["id"])
+    return None
