@@ -14,8 +14,8 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.dependencies.user_dependencies import get_user_or_404
-from app.schemas.user_schema import UserCreate, UserResponse, UserRole
+from app.dependencies.user_dependencies import get_user_or_404, validar_patch_no_vacio, verificar_api_key
+from app.schemas.user_schema import UserCreate, UserReplace, UserResponse, UserRole, UserUpdate
 from app.services import user_service
 
 # El prefijo hace que TODAS las rutas de este router empiecen con
@@ -72,3 +72,93 @@ def crear_usuario(usuario: UserCreate):
             detail=f"Ya existe un usuario registrado con el correo '{usuario.email}'",
         )
     return user_service.crear_usuario(usuario)
+
+
+@router.put(
+    "/{user_id}",
+    response_model=UserResponse,
+    summary="Actualizar un usuario por completo",
+    description=(
+        "Reemplaza TODOS los campos de un usuario existente (name, email, "
+        "role, is_active). Responde 404 si el usuario no existe, y 400 si "
+        "el nuevo correo ya pertenece a otro usuario."
+    ),
+    response_description="El usuario ya actualizado con los nuevos datos.",
+)
+def reemplazar_usuario(
+    datos: UserReplace,
+    usuario_actual: dict = Depends(get_user_or_404),
+):
+    """
+    PUT /users/{user_id}
+
+    A diferencia de PATCH, aquí el cliente debe enviar los 4 campos
+    (UserReplace los exige todos como obligatorios): la filosofía de
+    PUT es "reemplazar el recurso completo", no "tocar un pedacito".
+    """
+    correo_en_uso = user_service.obtener_usuario_por_email(datos.email, excluir_id=usuario_actual["id"])
+    if correo_en_uso is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Ya existe otro usuario registrado con el correo '{datos.email}'",
+        )
+    return user_service.reemplazar_usuario(usuario_actual["id"], datos)
+
+
+@router.patch(
+    "/{user_id}",
+    response_model=UserResponse,
+    summary="Actualizar un usuario parcialmente",
+    description=(
+        "Modifica SOLO los campos enviados en el body (ej: {\"role\": \"support\"}). "
+        "Responde 400 si no se envía ningún campo, y 404 si el usuario no existe."
+    ),
+    response_description="El usuario con los campos ya actualizados.",
+)
+def actualizar_usuario_parcial(
+    datos: UserUpdate = Depends(validar_patch_no_vacio),
+    usuario_actual: dict = Depends(get_user_or_404),
+):
+    """
+    PATCH /users/{user_id}
+
+    'datos' ya pasó por la dependencia validar_patch_no_vacio, así
+    que aquí es seguro asumir que al menos un campo viene con valor.
+    Solo falta revisar el caso particular de que el nuevo correo (si
+    se envió) no choque con el de otro usuario.
+    """
+    if datos.email is not None:
+        correo_en_uso = user_service.obtener_usuario_por_email(datos.email, excluir_id=usuario_actual["id"])
+        if correo_en_uso is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ya existe otro usuario registrado con el correo '{datos.email}'",
+            )
+    return user_service.actualizar_usuario_parcial(usuario_actual["id"], datos)
+
+
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Eliminar un usuario",
+    description=(
+        "Elimina un usuario existente. Requiere la cabecera 'X-API-Key' "
+        "para autorizar la operación (simulación de autenticación básica). "
+        "Responde 404 si el usuario no existe, y 401 si falta o es "
+        "incorrecta la cabecera de autorización."
+    ),
+    response_description="Sin contenido: el usuario fue eliminado correctamente.",
+)
+def eliminar_usuario(
+    usuario_actual: dict = Depends(get_user_or_404),
+    _autorizado: None = Depends(verificar_api_key),
+) -> None:
+    """
+    DELETE /users/{user_id}
+
+    Devuelve 204 No Content (sin cuerpo de respuesta) tras eliminar
+    exitosamente. Combina DOS dependencias: primero confirma que el
+    usuario existe, luego valida la cabecera de autorización.
+    """
+    user_service.eliminar_usuario(usuario_actual["id"])
+    return None
