@@ -1,6 +1,6 @@
 # device_systems — API REST para Gestión de Usuarios (v2.0.0)
 
-Proyecto de la actividad **GA1-220501096-01-AA1-EV08 — FastAPI Intermedio**. Evoluciona la API construida en EV07: ahora con **CRUD completo** (PUT, PATCH, DELETE), **manejo profesional de errores**, **códigos de estado HTTP correctos**, **Swagger/OpenAPI mejorado** y **Dependency Injection** con `Depends()`.
+Proyecto de las actividades **EV07 — Fundamentos de FastAPI** y **EV08 — FastAPI Intermedio**. Evolucionó de una API básica con GET/POST (v1.0.0) a una API con **CRUD completo** (PUT, PATCH, DELETE), **manejo profesional de errores**, **códigos de estado HTTP correctos**, **Swagger/OpenAPI mejorado** y **Dependency Injection** con `Depends()` (v2.0.0).
 
 ## 📋 Descripción de la API
 
@@ -10,6 +10,9 @@ Proyecto de la actividad **GA1-220501096-01-AA1-EV08 — FastAPI Intermedio**. E
 - Manejo de errores estructurado con `HTTPException` (404, 400, 401, 422).
 - **4 dependencias reutilizables** con `Depends()`: búsqueda por ID, validación de PATCH vacío, autenticación simulada por cabecera, y configuración general de la API.
 - Documentación automática enriquecida en Swagger UI y ReDoc.
+- Todas las respuestas incluyen **cabeceras HTTP personalizadas** (`X-App-Name`, `X-API-Version`).
+
+Los datos se guardan en memoria (no hay base de datos externa) — suficiente para el alcance de este reto académico; el servidor arranca con 4 usuarios de ejemplo ya cargados.
 
 ## 🛠️ Tecnologías utilizadas
 
@@ -89,22 +92,67 @@ Todas las respuestas incluyen las cabeceras `X-App-Name: device_systems` y `X-AP
 
 ## 🧪 Ejemplos de peticiones y respuestas (probados con TestClient antes de subir)
 
-### PUT /users/3 (actualización completa)
+### GET /users
+```json
+[
+  {"name": "Camila Restrepo", "email": "camila@ejemplo.com", "role": "admin", "is_active": true, "id": 1},
+  {"name": "Andrés Gómez", "email": "andres@ejemplo.com", "role": "support", "is_active": true, "id": 2},
+  {"name": "Laura Pérez", "email": "laura@ejemplo.com", "role": "user", "is_active": false, "id": 3},
+  {"name": "Pedro Sánchez", "email": "pedro@ejemplo.com", "role": "user", "is_active": true, "id": 4}
+]
+```
+
+### GET /users?role=admin
+```json
+[{"name": "Camila Restrepo", "email": "camila@ejemplo.com", "role": "admin", "is_active": true, "id": 1}]
+```
+
+### GET /users/2
+```json
+{"name": "Andrés Gómez", "email": "andres@ejemplo.com", "role": "support", "is_active": true, "id": 2}
+```
+
+### GET /users/999 (no existe) → `404 Not Found`
+```json
+{"detail": "Usuario no encontrado"}
+```
+
+### POST /users (caso válido) → `201 Created`
+Body:
+```json
+{"name": "Sofía Vargas", "email": "sofia@ejemplo.com", "role": "user", "is_active": true}
+```
+Respuesta:
+```json
+{"name": "Sofía Vargas", "email": "sofia@ejemplo.com", "role": "user", "is_active": true, "id": 5}
+```
+
+### POST /users (correo duplicado) → `400 Bad Request`
+```json
+{"detail": "Ya existe un usuario registrado con el correo 'sofia@ejemplo.com'"}
+```
+
+### POST /users (rol inválido) → `422 Unprocessable Entity`
+```json
+{"detail": [{"type": "enum", "loc": ["body", "role"], "msg": "Input should be 'admin', 'support' or 'user'", "input": "superadmin"}]}
+```
+
+### PUT /users/3 (actualización completa) → `200 OK`
 Body:
 ```json
 {"name": "Laura Pérez G.", "email": "laura.g@ejemplo.com", "role": "admin", "is_active": true}
 ```
-Respuesta `200 OK`:
+Respuesta:
 ```json
 {"name": "Laura Pérez G.", "email": "laura.g@ejemplo.com", "role": "admin", "is_active": true, "id": 3}
 ```
 
-### PATCH /users/2 (actualización parcial — solo el rol)
+### PATCH /users/2 (actualización parcial — solo el rol) → `200 OK`
 Body:
 ```json
 {"role": "admin"}
 ```
-Respuesta `200 OK`:
+Respuesta:
 ```json
 {"name": "Andrés Gómez", "email": "andres@ejemplo.com", "role": "admin", "is_active": true, "id": 2}
 ```
@@ -122,16 +170,6 @@ Respuesta `200 OK`:
 ### DELETE /users/4 con `X-API-Key: device-systems-secret-key` → `204 No Content`
 *(sin cuerpo de respuesta)*
 
-### GET /users/999 (no existe) → `404 Not Found`
-```json
-{"detail": "Usuario no encontrado"}
-```
-
-### PUT /users/1 con el correo de otro usuario → `400 Bad Request`
-```json
-{"detail": "Ya existe otro usuario registrado con el correo 'andres@ejemplo.com'"}
-```
-
 ---
 
 ## 🔌 Explicación del uso de `Depends()` (Dependency Injection)
@@ -145,68 +183,93 @@ El proyecto define 4 dependencias en `app/dependencies/user_dependencies.py`:
 | `verificar_api_key(x_api_key)` | Simula autenticación leyendo la cabecera `X-API-Key` | `DELETE /users/{user_id}` |
 | `obtener_configuracion_api()` | Expone el nombre y versión de la app (dependencia sin parámetros) | `GET /` |
 
-La ventaja principal: **`get_user_or_404` se declara una sola vez** y se reutiliza en 4 endpoints distintos. Sin `Depends()`, cada uno de esos 4 endpoints tendría que repetir la misma búsqueda + el mismo `if usuario is None: raise HTTPException(...)`, duplicando código que, si cambia (por ejemplo, el mensaje de error), habría que actualizar en 4 lugares en vez de uno.
+La ventaja principal: **`get_user_or_404` se declara una sola vez** y se reutiliza en 4 endpoints distintos. Sin `Depends()`, cada uno tendría que repetir la misma búsqueda + el mismo `if usuario is None: raise HTTPException(...)`.
+
+> **Nota técnica:** la guía también sugiere dependencias para "validar correo duplicado" y "validar rol permitido". El rol ya queda cubierto automáticamente por Pydantic (el `Enum` del schema rechaza cualquier valor fuera de `admin/support/user` con un 422, sin código adicional). El correo duplicado sí se valida como lógica de negocio (`user_service.obtener_usuario_por_email()`), pero se invoca directamente desde las rutas en vez de como una dependencia `Depends()` separada: convertirla en dependencia recibiendo el mismo modelo Pydantic del body que ya recibe el propio endpoint hace que FastAPI interprete que hay *dos* cuerpos distintos y exija el JSON anidado en dos claves, rompiendo la petición plana que envía un cliente normal. Se priorizó una implementación simple y funcionalmente correcta sobre forzar ese patrón.
 
 ---
 
 ## ⚠️ Explicación del manejo de errores implementado
 
-Se usa `HTTPException` de FastAPI en 4 escenarios distintos:
+Se usa `HTTPException` en 4 escenarios distintos:
 
 1. **Usuario no encontrado** (404) — en `get_user_or_404`, reutilizada por 4 endpoints.
-2. **Correo electrónico duplicado** (400) — validado en `POST`, `PUT` y `PATCH`, comparando contra `user_service.obtener_usuario_por_email()` (que además excluye al propio usuario al actualizar, para no marcarlo como duplicado de sí mismo).
+2. **Correo electrónico duplicado** (400) — validado en `POST`, `PUT` y `PATCH`, excluyendo al propio usuario al actualizar (para no marcarlo como duplicado de sí mismo).
 3. **PATCH sin ningún campo enviado** (400) — validado por la dependencia `validar_patch_no_vacio`.
 4. **Autorización faltante en DELETE** (401) — validado por `verificar_api_key`.
 
-Además, Pydantic maneja automáticamente un quinto caso sin que el código lo mencione explícitamente: **datos inválidos** (422) — nombre muy corto, correo mal formado, o un rol fuera de `admin/support/user`. FastAPI intercepta esos casos antes de que el código de la ruta se ejecute.
+Pydantic maneja automáticamente un quinto caso: **datos inválidos** (422) — nombre muy corto, correo mal formado, o rol fuera de `admin/support/user`.
 
 ---
 
 ## 🖥️ Capturas de Swagger UI y ReDoc
 
-**Swagger UI — vista general con los 6 endpoints organizados bajo el tag "Users":**
+**Swagger UI — vista general de los endpoints:**
 ![Swagger UI general](images/swagger_1_vista_general.png)
 
-**Prueba de PUT /users/{user_id}:**
-![Prueba PUT](images/swagger_2_put_users.png)
+**Prueba GET /users:**
+![Prueba GET /users](images/swagger_2_get_users.png)
 
-**Prueba de PATCH /users/{user_id}:**
-![Prueba PATCH](images/swagger_3_patch_users.png)
+**Prueba GET /users/{user_id}:**
+![Prueba GET /users/id](images/swagger_3_get_user_id.png)
 
-**Prueba de DELETE /users/{user_id} (con cabecera X-API-Key):**
-![Prueba DELETE](images/swagger_4_delete_users.png)
+**Prueba POST /users:**
+![Prueba POST /users](images/swagger_4_post_users.png)
 
-**Evidencia de un error controlado (404, 400 o 401):**
-![Evidencia de error](images/swagger_5_error_controlado.png)
+**Evidencia de validación — correo duplicado:**
+![Evidencia correo duplicado](images/swagger_5_validacion_error.png)
 
-**ReDoc — documentación alternativa:**
+**Evidencia de validación — rol inválido:**
+![Evidencia rol inválido](images/swagger_6_validacion_error.png)
+
+**Prueba PUT /users/{user_id} (EV08):**
+![Prueba PUT](images/swagger_7_put_users.png)
+
+**Prueba PATCH /users/{user_id} (EV08):**
+![Prueba PATCH](images/swagger_8_patch_users.png)
+
+**Prueba DELETE /users/{user_id} con cabecera X-API-Key (EV08):**
+![Prueba DELETE](images/swagger_9_delete_users.png)
+
+**Evidencia de error controlado — DELETE sin autorización, 401 (EV08):**
+![Evidencia error 401](images/swagger_10_error_controlado.png)
+
+**ReDoc — documentación alternativa (EV08):**
 ![ReDoc](images/redoc_vista_general.png)
 
 ---
 
-## 🌿 Estrategia de ramas (Git Flow — continuación de EV07)
+## 🌿 Estrategia de ramas (Git Flow)
 
 ```
 main
  └── develop
-      ├── feature/arquitectura-servicios-data  (capas data/services, refactor de GET/POST)
-      ├── feature/dependency-injection          (las 4 dependencias con Depends())
-      ├── feature/put-patch-delete              (CRUD completo: PUT, PATCH, DELETE)
-      └── feature/swagger-docs-v2               (metadatos v2.0.0 + este README)
+      ├── feature/estructura-proyecto            (EV07 — estructura base FastAPI)
+      ├── feature/modelos-pydantic               (EV07 — UserBase, UserCreate, UserResponse)
+      ├── feature/endpoints-get                  (EV07 — GET /users, GET /users/{id})
+      ├── feature/endpoints-post                 (EV07 — POST /users)
+      ├── feature/response-models-headers        (EV07 — middleware de cabeceras)
+      ├── feature/documentacion                  (EV07 — README v1)
+      ├── feature/arquitectura-servicios-data     (EV08 — capas data/services)
+      ├── feature/dependency-injection            (EV08 — dependencias con Depends())
+      ├── feature/put-patch-delete                (EV08 — CRUD completo)
+      └── feature/swagger-docs-v2                 (EV08 — metadatos v2.0.0 + README v2)
 ```
 
-Cada feature se desarrolló, se probó con `TestClient`, y se integró a `develop` con un merge commit (`--no-ff`) antes de pasar a la siguiente. Al finalizar, `develop` se fusiona en `main` como release **v2.0.0**.
+Cada feature se desarrolló, se probó, y se integró a `develop` con un merge commit (`--no-ff`). `develop` se fusionó en `main` dos veces: como **v1.0.0** (EV07) y como **v2.0.0** (EV08).
 
 ---
 
 ## 🧠 Reflexión sobre la evolución del proyecto
 
-Pasar de la versión EV07 (solo GET y POST guardando los datos directamente en el router) a esta versión con capas separadas me hizo notar cuánto crece la complejidad real de una API a medida que se le agregan operaciones. Con solo GET y POST, tener todo en un archivo no se sentía problemático; pero al agregar PUT, PATCH y DELETE — cada uno con sus propias reglas de validación — repetir la búsqueda del usuario y el manejo del 404 en cada endpoint se hubiera vuelto muy repetitivo. Ahí fue donde entendí el valor real de `Depends()`: no es solo "una forma más de recibir parámetros", es una manera de declarar una regla de validación *una sola vez* y confiar en que FastAPI la aplique donde se necesite.
+Pasar de la versión EV07 (solo GET y POST, guardando los datos directamente en el router) a esta versión con capas separadas me hizo notar cuánto crece la complejidad real de una API a medida que se le agregan operaciones. Con solo GET y POST, tener todo en un archivo no se sentía problemático; pero al agregar PUT, PATCH y DELETE — cada uno con sus propias reglas de validación — repetir la búsqueda del usuario y el manejo del 404 en cada endpoint se hubiera vuelto muy repetitivo. Ahí entendí el valor real de `Depends()`: no es solo "otra forma de recibir parámetros", es una manera de declarar una regla de validación *una sola vez* y confiar en que FastAPI la aplique donde se necesite.
 
 La diferencia entre PUT y PATCH también se aclaró mucho al implementarlos: PUT obliga a pensar en el recurso como algo que se reemplaza entero (por eso todos los campos son obligatorios en `UserReplace`), mientras que PATCH obliga a pensar en qué pasa cuando un campo *no* se envía — ahí es donde `Optional` y `exclude_none` en Pydantic se volvieron indispensables.
 
-Por último, separar `services` de `routes` me hizo ver una ventaja que no esperaba: al no depender de FastAPI, la lógica de negocio (`user_service.py`) se puede probar y entender sin siquiera saber qué es un endpoint HTTP — es simplemente un conjunto de funciones que reciben y devuelven datos. Eso hace que sea mucho más fácil razonar sobre errores: si algo falla, sé de inmediato si el problema está en cómo se valida el HTTP (`routes`/`dependencies`) o en la lógica en sí (`services`).
+Por último, separar `services` de `routes` me hizo ver una ventaja que no esperaba: al no depender de FastAPI, la lógica de negocio se puede probar y entender sin siquiera saber qué es un endpoint HTTP. Eso hace más fácil razonar sobre errores: si algo falla, sé de inmediato si el problema está en cómo se valida el HTTP o en la lógica en sí.
+
+También aprendí (de la manera difícil, resolviendo un conflicto de Git real) que documentar bien la evolución de un proyecto importa tanto como el código: perder de vista qué evidencia ya existía de una versión anterior es un error fácil de cometer al fusionar ramas, y vale la pena revisar con calma en vez de asumir que un merge se resolvió como uno esperaba.
 
 ## 👤 Autor
 
-Proyecto desarrollado por **Maicol Esneider** como evidencia de aprendizaje de la actividad *FastAPI Intermedio: Evolución de device_systems con CRUD Completo* (GA1-220501096-01-AA1-EV08).
+Proyecto desarrollado por **Maicol Esneider** como evidencia de aprendizaje de las actividades *Fundamentos de FastAPI* (EV07) y *FastAPI Intermedio: Evolución con CRUD Completo* (EV08).
