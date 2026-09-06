@@ -235,8 +235,11 @@ Pydantic maneja automáticamente un quinto caso: **datos inválidos** (422) — 
 ![Evidencia error 401](images/swagger_10_error_controlado.png)
 
 **ReDoc — documentación alternativa (EV08):**
-![ReDoc](images/redoc_vista_general.png)
-
+![ReDoc](images/redoc_vista_general_1.png)
+![ReDoc](images/redoc_vista_general_2.png)
+![ReDoc](images/redoc_vista_general_3.png)
+![ReDoc](images/redoc_vista_general_4.png)
+![ReDoc](images/redoc_vista_general_5.png)
 ---
 
 ## 🌿 Estrategia de ramas (Git Flow)
