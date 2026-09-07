@@ -234,6 +234,12 @@ Pydantic maneja automáticamente un quinto caso: **datos inválidos** (422) — 
 **Evidencia de error controlado — DELETE sin autorización, 401 (EV08):**
 ![Evidencia error 401](images/swagger_10_error_controlado.png)
 
+**Evidencia — usuario no encontrado, 404:**
+![Evidencia 404](images/swagger_11_404_no_encontrado.png)
+
+**Evidencia — PATCH sin campos, 400:**
+![Evidencia PATCH vacío](images/swagger_12_patch_vacio.png)
+
 **ReDoc — documentación alternativa (EV08):**
 ![ReDoc](images/redoc_vista_general_1.png)
 ![ReDoc](images/redoc_vista_general_2.png)
