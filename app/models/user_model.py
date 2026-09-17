@@ -12,6 +12,7 @@ diferencia completa explicada en el README.
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy.orm import relationship
 
 from app.database.connection import Base
 
@@ -26,5 +27,6 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # NOTA: la relación con Loan ("un usuario puede tener muchos
-    # préstamos") se agrega en EV10, cuando el modelo Loan exista.
+    # Relación uno-a-muchos: un usuario puede tener muchos préstamos
+    # históricos. back_populates la conecta con Loan.user.
+    loans = relationship("Loan", back_populates="user")
