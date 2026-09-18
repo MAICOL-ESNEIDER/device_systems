@@ -5,21 +5,20 @@ Punto de entrada de device_systems (v3.0.0 — EV10: relaciones,
 migraciones con Alembic y consultas con joins). Registra los 3
 routers (users, devices, loans) y agrega cabeceras personalizadas
 a todas las respuestas mediante middleware.
+
+A partir de esta versión, el esquema de la base de datos ya NO se
+crea con Base.metadata.create_all(): esa responsabilidad pasa
+completamente a Alembic (ver alembic/versions/). Ejecutar
+'alembic upgrade head' es ahora el paso obligatorio antes de correr
+el servidor por primera vez.
 """
 
 from fastapi import Depends, FastAPI, Request
 
-from app.database.connection import Base, engine
 from app.dependencies.user_dependencies import obtener_configuracion_api
 from app.routes.device_routes import router as device_router
 from app.routes.loan_routes import router as loan_router
 from app.routes.user_routes import router as user_router
-
-# Crea todas las tablas declaradas en los modelos si todavía no
-# existen. Se conserva por ahora durante el desarrollo de EV10; se
-# retira más adelante en esta misma rama cuando Alembic queda
-# configurado como la única fuente de verdad del esquema.
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="device_systems API",
