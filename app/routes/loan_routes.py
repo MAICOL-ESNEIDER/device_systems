@@ -9,10 +9,13 @@ user_service Y device_service antes de crear un préstamo.
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.dependencies.auth_dependency import get_current_active_user, require_roles
 from app.dependencies.database_dependency import get_db
+from app.models.user_model import User
+from app.rate_limiter import limiter
 from app.schemas.loan_schema import LoanCreate, LoanDetailResponse, LoanResponse
 from app.services import device_service, loan_service, user_service
 
@@ -39,7 +42,7 @@ def listar_prestamos(
     "/details",
     response_model=List[LoanDetailResponse],
     summary="Préstamos con información relacionada (JOIN)",
-    description="Consulta avanzada: cada préstamo incluye los datos básicos del usuario y del dispositivo, obtenidos con un JOIN entre las 3 tablas.",
+    description="Consulta avanzada: cada préstamo incluye los datos básicos del usuario y del dispositivo, obtenidos con un JOIN entre las 3 tablas. Requiere rol admin o support.",
     response_description="Lista de préstamos con datos de usuario y dispositivo anidados.",
 )
 def listar_prestamos_detallados(
@@ -47,6 +50,7 @@ def listar_prestamos_detallados(
     device_type: Optional[str] = Query(default=None),
     user_email: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
+    _current_user: User = Depends(require_roles(["admin", "support"])),
 ):
     return loan_service.listar_prestamos_detallados(db, estado=status_filter, device_type=device_type, user_email=user_email)
 
@@ -72,11 +76,17 @@ def obtener_prestamo(loan_id: int = Path(..., ge=1), db: Session = Depends(get_d
     summary="Registrar un nuevo préstamo",
     description=(
         "Crea un préstamo, validando que el usuario exista, el dispositivo exista "
-        "y esté disponible. Marca el dispositivo como no disponible."
+        "y esté disponible. Marca el dispositivo como no disponible. Requiere autenticación."
     ),
     response_description="El préstamo recién creado.",
 )
-def crear_prestamo(datos: LoanCreate, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def crear_prestamo(
+    request: Request,
+    datos: LoanCreate,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_active_user),
+):
     usuario = user_service.obtener_usuario_por_id(db, datos.user_id)
     if usuario is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
@@ -98,10 +108,14 @@ def crear_prestamo(datos: LoanCreate, db: Session = Depends(get_db)):
     "/{loan_id}/return",
     response_model=LoanResponse,
     summary="Registrar la devolución de un préstamo",
-    description="Marca un préstamo como devuelto, asigna la fecha de devolución y libera el dispositivo. 404 si el préstamo no existe, 409 si ya estaba devuelto.",
+    description="Marca un préstamo como devuelto, asigna la fecha de devolución y libera el dispositivo. Requiere rol admin o support. 404 si el préstamo no existe, 409 si ya estaba devuelto.",
     response_description="El préstamo actualizado con su estado 'returned'.",
 )
-def devolver_prestamo(loan_id: int = Path(..., ge=1), db: Session = Depends(get_db)):
+def devolver_prestamo(
+    loan_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_roles(["admin", "support"])),
+):
     prestamo = loan_service.obtener_prestamo_por_id(db, loan_id)
     if prestamo is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Préstamo no encontrado")
