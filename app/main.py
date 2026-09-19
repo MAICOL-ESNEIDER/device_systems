@@ -1,32 +1,39 @@
 """
 app/main.py
 --------------------------------------------------------------
-Punto de entrada de device_systems (v2.1.0 — EV09: persistencia con
-SQLAlchemy). Crea las tablas en la base de datos al iniciar si no
-existen. A partir de EV10 esta responsabilidad pasa a Alembic.
+Punto de entrada de device_systems (v3.0.0 — EV10: relaciones,
+migraciones con Alembic y consultas con joins). Registra los 3
+routers (users, devices, loans) y agrega cabeceras personalizadas
+a todas las respuestas mediante middleware.
+
+A partir de esta versión, el esquema de la base de datos ya NO se
+crea con Base.metadata.create_all(): esa responsabilidad pasa
+completamente a Alembic (ver alembic/versions/). Ejecutar
+'alembic upgrade head' es ahora el paso obligatorio antes de correr
+el servidor por primera vez.
 """
 
 from fastapi import Depends, FastAPI, Request
 
-from app.database.connection import Base, engine
 from app.dependencies.user_dependencies import obtener_configuracion_api
+from app.routes.device_routes import router as device_router
+from app.routes.loan_routes import router as loan_router
 from app.routes.user_routes import router as user_router
-
-# Crea todas las tablas declaradas en los modelos (app/models/*.py)
-# si todavía no existen en la base de datos.
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="device_systems API",
     description=(
-        "API REST para la gestión de usuarios de device_systems, con "
-        "persistencia real en base de datos vía SQLAlchemy."
+        "API REST para la gestión de usuarios, dispositivos y préstamos de "
+        "device_systems. Incluye persistencia con SQLAlchemy, migraciones "
+        "con Alembic, relaciones entre modelos y consultas con joins."
     ),
-    version="2.1.0",
+    version="3.0.0",
     contact={"name": "Maicol Esneider", "url": "https://github.com/MAICOL-ESNEIDER"},
 )
 
 app.include_router(user_router)
+app.include_router(device_router)
+app.include_router(loan_router)
 
 
 @app.middleware("http")
@@ -34,7 +41,7 @@ async def agregar_cabeceras_personalizadas(request: Request, call_next):
     """Middleware que añade X-App-Name y X-API-Version a toda respuesta."""
     response = await call_next(request)
     response.headers["X-App-Name"] = "device_systems"
-    response.headers["X-API-Version"] = "2.1"
+    response.headers["X-API-Version"] = "3.0"
     return response
 
 

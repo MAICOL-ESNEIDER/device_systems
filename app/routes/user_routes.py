@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 
 from app.dependencies.database_dependency import get_db
 from app.dependencies.user_dependencies import get_user_or_404, validar_patch_no_vacio, verificar_api_key
+from app.schemas.loan_schema import LoanResponse
 from app.schemas.user_schema import UserCreate, UserPatch, UserResponse, UserRole, UserUpdate
-from app.services import user_service
+from app.services import loan_service, user_service
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -119,3 +120,17 @@ def eliminar_usuario(
 ) -> None:
     user_service.eliminar_usuario(db, usuario_actual.id)
     return None
+
+
+@router.get(
+    "/{user_id}/loans",
+    response_model=List[LoanResponse],
+    summary="Historial de préstamos de un usuario",
+    description="Lista todos los préstamos (activos e históricos) asociados a un usuario. 404 si el usuario no existe.",
+    response_description="Lista de préstamos del usuario.",
+)
+def historial_prestamos_usuario(
+    usuario=Depends(get_user_or_404),
+    db: Session = Depends(get_db),
+):
+    return loan_service.listar_prestamos_por_usuario(db, usuario.id)
