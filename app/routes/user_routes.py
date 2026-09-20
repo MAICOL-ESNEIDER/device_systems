@@ -3,15 +3,22 @@ app/routes/user_routes.py
 --------------------------------------------------------------
 Endpoints REST del recurso 'users', persistidos en base de datos
 real mediante SQLAlchemy (sesión inyectada con Depends(get_db)).
+
+A partir de EV11, consultar usuarios requiere estar autenticado
+(Depends(get_current_active_user)); ver la tabla de protección de
+rutas en el README para el resto de los recursos.
 """
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.dependencies.auth_dependency import get_current_active_user
 from app.dependencies.database_dependency import get_db
 from app.dependencies.user_dependencies import get_user_or_404, validar_patch_no_vacio, verificar_api_key
+from app.models.user_model import User
+from app.rate_limiter import limiter
 from app.schemas.loan_schema import LoanResponse
 from app.schemas.user_schema import UserCreate, UserPatch, UserResponse, UserRole, UserUpdate
 from app.services import loan_service, user_service
@@ -23,14 +30,17 @@ router = APIRouter(prefix="/users", tags=["Users"])
     "/",
     response_model=List[UserResponse],
     summary="Listar usuarios",
-    description="Lista usuarios desde la base de datos, con filtros opcionales por rol/estado y orden por nombre o fecha de creación.",
+    description="Lista usuarios desde la base de datos, con filtros opcionales por rol/estado y orden por nombre o fecha de creación. Requiere autenticación.",
     response_description="Lista de usuarios.",
 )
+@limiter.limit("30/minute")
 def listar_usuarios(
+    request: Request,
     role: Optional[UserRole] = Query(default=None, description="Filtra por rol: admin, support o user."),
     is_active: Optional[bool] = Query(default=None, description="Filtra por estado activo."),
     order_by: Optional[str] = Query(default=None, description="Ordena por 'name' o 'created_at'."),
     db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_active_user),
 ):
     return user_service.listar_usuarios(db, role=role, is_active=is_active, order_by=order_by)
 
@@ -39,10 +49,13 @@ def listar_usuarios(
     "/{user_id}",
     response_model=UserResponse,
     summary="Consultar un usuario por su ID",
-    description="Busca un usuario por ID en la base de datos. Responde 404 si no existe.",
+    description="Busca un usuario por ID en la base de datos. Requiere autenticación. Responde 404 si no existe.",
     response_description="El usuario encontrado.",
 )
-def obtener_usuario(usuario=Depends(get_user_or_404)):
+def obtener_usuario(
+    usuario=Depends(get_user_or_404),
+    _current_user: User = Depends(get_current_active_user),
+):
     return usuario
 
 
