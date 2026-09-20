@@ -48,4 +48,4 @@ def verificar_api_key(x_api_key: Optional[str] = Header(default=None)) -> None:
 
 def obtener_configuracion_api() -> dict:
     """Dependencia sin parámetros: expone la configuración general de la API."""
-    return {"app_name": "device_systems", "version": "3.0.0"}
+    return {"app_name": "device_systems", "version": "4.0.0"}

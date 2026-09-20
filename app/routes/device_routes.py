@@ -13,7 +13,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
+from app.dependencies.auth_dependency import require_roles
 from app.dependencies.database_dependency import get_db
+from app.models.user_model import User
 from app.schemas.device_schema import DeviceCreate, DevicePatch, DeviceResponse, DeviceUpdate
 from app.schemas.loan_schema import LoanResponse
 from app.services import device_service, loan_service
@@ -79,10 +81,14 @@ def historial_prestamos_dispositivo(
     response_model=DeviceResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Registrar un nuevo dispositivo",
-    description="Crea un dispositivo. Rechaza números de serie duplicados.",
+    description="Crea un dispositivo. Requiere rol admin o support. Rechaza números de serie duplicados.",
     response_description="El dispositivo recién creado.",
 )
-def crear_dispositivo(dispositivo: DeviceCreate, db: Session = Depends(get_db)):
+def crear_dispositivo(
+    dispositivo: DeviceCreate,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_roles(["admin", "support"])),
+):
     if device_service.obtener_dispositivo_por_serial(db, dispositivo.serial_number) is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -95,13 +101,14 @@ def crear_dispositivo(dispositivo: DeviceCreate, db: Session = Depends(get_db)):
     "/{device_id}",
     response_model=DeviceResponse,
     summary="Actualizar un dispositivo por completo",
-    description="Reemplaza todos los campos de un dispositivo. 404 si no existe, 400 si el serial pertenece a otro.",
+    description="Reemplaza todos los campos de un dispositivo. Requiere rol admin o support. 404 si no existe, 400 si el serial pertenece a otro.",
     response_description="El dispositivo actualizado.",
 )
 def reemplazar_dispositivo(
     datos: DeviceUpdate,
     dispositivo_actual=Depends(get_device_or_404),
     db: Session = Depends(get_db),
+    _current_user: User = Depends(require_roles(["admin", "support"])),
 ):
     serial_en_uso = device_service.obtener_dispositivo_por_serial(db, datos.serial_number, excluir_id=dispositivo_actual.id)
     if serial_en_uso is not None:
@@ -131,9 +138,13 @@ def actualizar_dispositivo_parcial(
     "/{device_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Eliminar un dispositivo",
-    description="Elimina un dispositivo. 404 si no existe.",
+    description="Elimina un dispositivo. Requiere rol admin. 404 si no existe.",
     response_description="Sin contenido.",
 )
-def eliminar_dispositivo(dispositivo_actual=Depends(get_device_or_404), db: Session = Depends(get_db)) -> None:
+def eliminar_dispositivo(
+    dispositivo_actual=Depends(get_device_or_404),
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_roles(["admin"])),
+) -> None:
     device_service.eliminar_dispositivo(db, dispositivo_actual.id)
     return None
