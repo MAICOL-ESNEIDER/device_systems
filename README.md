@@ -1,6 +1,9 @@
 # device_systems — API REST Segura de Usuarios, Dispositivos y Préstamos (v4.0.0)
 
+📹 **Video de reflexión y sustentación (EV11):** [Ver en YouTube] https://youtu.be/0UWdhXsVRZs 
+
 Proyecto de las actividades **EV07** a **EV10** (ver resumen en secciones anteriores) y **EV11 — FastAPI Seguridad: Autenticación, Middleware, CORS, Rate Limiting y Validación Avanzada**. En esta versión la API deja de ser abierta: ahora requiere **autenticación con OAuth2 + JWT**, protege operaciones sensibles **por rol**, aplica **rate limiting** contra abuso, agrega **CORS** para consumo seguro desde un frontend, y usa un **middleware personalizado** de trazabilidad.
+
 
 ## 📋 Descripción de la API
 
